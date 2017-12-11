@@ -1,7 +1,7 @@
 #coding:utf-8
 import sys
 sys.path.insert(1, "./crnn")
-
+import argparse
 import random
 import torch
 import torch.backends.cudnn as cudnn
@@ -16,7 +16,7 @@ from PIL import Image
 import models.crnn as crnn
 import keys
 from math import *
-import mahotas
+# import mahotas
 import cv2
 
 def dumpRotateImage(img,degree,pt1,pt2,pt3,pt4):
@@ -37,12 +37,19 @@ def dumpRotateImage(img,degree,pt1,pt2,pt3,pt4):
     height,width=imgOut.shape[:2]
     return imgOut
 
-def crnnSource():
+def crnnSource(path):
     alphabet = keys.alphabet
     converter = util.strLabelConverter(alphabet)
-    model = crnn.CRNN(32, 1, len(alphabet)+1, 256, 1).cuda()
-    path = './crnn/samples/netCRNN63.pth'
-    model.load_state_dict(torch.load(path))
+    model = crnn.CRNN(32, 1, len(alphabet)+1, 256, 1)
+    if torch.cuda.is_available():
+        model = model.cuda()
+    # path = './crnn/samples/netCRNN63.pth'
+    # model.load_state_dict(torch.load(path))
+    if torch.cuda.is_available():
+        model.load_state_dict(torch.load(path))
+    else:
+        model.load_state_dict(torch.load(path, map_location=lambda storage, location: storage))
+    
     return model,converter
 
 def crnnRec(model,converter,im,text_recs):
@@ -68,7 +75,9 @@ def crnnRec(model,converter,im,text_recs):
        #print(w)
 
        transformer = dataset.resizeNormalize((w, 32))
-       image = transformer(image).cuda()
+       image = transformer(image)
+       if torch.cuda.is_available():
+           image = image.cuda()
        image = image.view(1, *image.size())
        image = Variable(image)
        model.eval()
@@ -83,8 +92,54 @@ def crnnRec(model,converter,im,text_recs):
        print(index)
        print(sim_pred)
        index = index + 1
+
+
+def crnn_line_rec(model,converter,image):
+    # partImg = dumpRotateImage(im,degrees(atan2(pt2[1]-pt1[1],pt2[0]-pt1[0])),pt1,pt2,pt3,pt4)
+    #mahotas.imsave('%s.jpg'%index, partImg)
+    
+
+    # image = Image.fromarray(partImg ).convert('L')
+    #height,width,channel=partImg.shape[:3]
+    #print(height,width,channel)
+    #print(image.size) 
+
+    #image = Image.open('./img/t4.jpg').convert('L')
+    scale = image.size[1]*1.0 / 32
+    w = image.size[0] / scale
+    w = int(w)
+    #print(w)
+
+    transformer = dataset.resizeNormalize((w, 32))
+    image = transformer(image)
+    if torch.cuda.is_available():
+        image = image.cuda()
+    image = image.view(1, *image.size())
+    image = Variable(image)
+    model.eval()
+    preds = model(image)
+    _, preds = preds.max(2)
+    # RuntimeError: dimension out of range (expected to be in range of [-2, 1], but got 2)
+    # preds = preds.squeeze(2)
+    preds = preds.transpose(1, 0).contiguous().view(-1)
+    preds_size = Variable(torch.IntTensor([preds.size(0)]))
+    raw_pred = converter.decode(preds.data, preds_size.data, raw=True)
+    sim_pred = converter.decode(preds.data, preds_size.data, raw=False)
+    #print('%-20s => %-20s' % (raw_pred, sim_pred))
+    print(sim_pred)
+    
+
+def get_args():
+    parser = argparse.ArgumentParser(description='')
+    parser.add_argument('--model_path', default='./crnn/samples/netCRNN63.pth')
+    parser.add_argument('--image', default='')
+    args = parser.parse_args()
+    return args
        
-       
+def main(args):
+    model,converter = crnnSource(args.model_path)
+    image = Image.open(args.image).convert('L')
+    crnn_line_rec(model, converter, image)
 
-
-
+if __name__ == '__main__':
+    main(get_args())

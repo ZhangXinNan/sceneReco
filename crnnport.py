@@ -1,5 +1,6 @@
 #coding:utf-8
 import sys
+import glob
 sys.path.insert(1, "./crnn")
 import argparse
 import random
@@ -7,7 +8,7 @@ import torch
 import torch.backends.cudnn as cudnn
 import torch.optim as optim
 import torch.utils.data
-from torch.autograd import Variable 
+from torch.autograd import Variable
 import numpy as np
 import os
 import util
@@ -18,6 +19,7 @@ import keys
 from math import *
 # import mahotas
 import cv2
+import editdistance
 
 def dumpRotateImage(img,degree,pt1,pt2,pt3,pt4):
     height,width=img.shape[:2]
@@ -95,16 +97,6 @@ def crnnRec(model,converter,im,text_recs):
 
 
 def crnn_line_rec(model,converter,image):
-    # partImg = dumpRotateImage(im,degrees(atan2(pt2[1]-pt1[1],pt2[0]-pt1[0])),pt1,pt2,pt3,pt4)
-    #mahotas.imsave('%s.jpg'%index, partImg)
-    
-
-    # image = Image.fromarray(partImg ).convert('L')
-    #height,width,channel=partImg.shape[:3]
-    #print(height,width,channel)
-    #print(image.size) 
-
-    #image = Image.open('./img/t4.jpg').convert('L')
     scale = image.size[1]*1.0 / 32
     w = image.size[0] / scale
     w = int(w)
@@ -126,20 +118,55 @@ def crnn_line_rec(model,converter,image):
     raw_pred = converter.decode(preds.data, preds_size.data, raw=True)
     sim_pred = converter.decode(preds.data, preds_size.data, raw=False)
     #print('%-20s => %-20s' % (raw_pred, sim_pred))
-    print(sim_pred)
+    # print(sim_pred)
+    return sim_pred
     
 
 def get_args():
     parser = argparse.ArgumentParser(description='')
-    parser.add_argument('--model_path', default='./crnn/samples/netCRNN63.pth')
-    parser.add_argument('--image', default='')
+    parser.add_argument('--model_path', default='./crnn/models/netCRNN63.pth')
+    parser.add_argument('--image', default='/Users/zhangxin/gitlab/dmocr/test/pic/text_line_image')
+    parser.add_argument('--suffix', default='jpg')
     args = parser.parse_args()
     return args
-       
+
+def read_boxfile(boxfile):
+    line_txt = ''
+    with open(boxfile, 'r') as fi:
+        for line in fi:
+            line = line.strip()
+            arr = line.split(' ')
+            line_txt += arr[0]
+    return line_txt
+
+
 def main(args):
     model,converter = crnnSource(args.model_path)
-    image = Image.open(args.image).convert('L')
-    crnn_line_rec(model, converter, image)
+    if os.path.isfile(args.image):
+        image = Image.open(args.image).convert('L')
+        result = crnn_line_rec(model, converter, image)
+        print result
+    elif os.path.isdir(args.image):
+        sum_char = 0
+        sum_right = 0
+        for filename in glob.glob(os.path.join(args.image, '*.'+args.suffix)):
+            if filename[0] == '.':  continue
+            boxfilename = filename[:-len(args.suffix)] + 'box'
+            line_txt = read_boxfile(boxfilename)
+            
+            image = Image.open(filename).convert('L')
+            result = crnn_line_rec(model, converter, image)
+
+            # print type(line_txt), type(result)
+            min_ed = editdistance.eval(line_txt.decode('utf-8'), result)
+            print filename, boxfilename
+            print '\t', line_txt
+            print '\t', result
+            print '\t', min_ed, len(line_txt.decode('utf-8')), len(line_txt.decode('utf-8')) - min_ed
+            sum_char += len(line_txt.decode('utf-8'))
+            sum_right += len(line_txt.decode('utf-8')) - min_ed
+        print sum_char, sum_right, float(sum_right) / sum_char
+        
 
 if __name__ == '__main__':
     main(get_args())

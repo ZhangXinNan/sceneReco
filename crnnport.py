@@ -1,4 +1,4 @@
-#coding:utf-8
+#encoding=utf-8
 import sys
 import glob
 sys.path.insert(1, "./crnn")
@@ -120,7 +120,7 @@ def crnn_line_rec(model,converter,image):
     #print('%-20s => %-20s' % (raw_pred, sim_pred))
     # print(sim_pred)
     return sim_pred
-    
+
 
 def get_args():
     parser = argparse.ArgumentParser(description='')
@@ -153,7 +153,7 @@ def main(args):
             if filename[0] == '.':  continue
             boxfilename = filename[:-len(args.suffix)] + 'box'
             line_txt = read_boxfile(boxfilename)
-            
+
             image = Image.open(filename).convert('L')
             result = crnn_line_rec(model, converter, image)
 
@@ -161,7 +161,7 @@ def main(args):
             min_ed = editdistance.eval(line_txt.decode('utf-8'), result)
             print filename, boxfilename
             print '\t', line_txt
-            print '\t', result
+            print '\t', result.encode('utf-8') # 此处直接打印result会报错，报错信息见最后
             print '\t', min_ed, len(line_txt.decode('utf-8')), len(line_txt.decode('utf-8')) - min_ed
             sum_char += len(line_txt.decode('utf-8'))
             sum_right += len(line_txt.decode('utf-8')) - min_ed
@@ -170,3 +170,13 @@ def main(args):
 
 if __name__ == '__main__':
     main(get_args())
+
+'''
+➜  sceneReco git:(zxdev) ✗ python crnnport.py > 20171227_netCRNN63.pth.log
+Traceback (most recent call last):
+  File "crnnport.py", line 172, in <module>
+    main(get_args())
+  File "crnnport.py", line 164, in main
+    print '\t', str(result)
+UnicodeEncodeError: 'ascii' codec can't encode characters in position 0-23: ordinal not in range(128)
+'''
